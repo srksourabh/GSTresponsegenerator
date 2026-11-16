@@ -7,6 +7,7 @@ import { getOpenRouterKey, setOpenRouterKey } from '../api';
  */
 export default function OpenRouterKeyGate({
   hasServerKey = false,
+  isGuest = false,
   onSave,
   onCancel,
   onLogout,
@@ -113,14 +114,16 @@ export default function OpenRouterKeyGate({
               Use server default key
             </button>
           )}
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            style={{ padding: 0, marginLeft: 'auto' }}
-            onClick={onLogout}
-          >
-            Sign out
-          </button>
+          {!isGuest && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ padding: 0, marginLeft: 'auto' }}
+              onClick={onLogout}
+            >
+              Sign out
+            </button>
+          )}
         </div>
       </div>
     </div>

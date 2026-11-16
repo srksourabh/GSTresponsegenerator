@@ -124,6 +124,7 @@ export default function App() {
     return (
       <OpenRouterKeyGate
         hasServerKey={Boolean(features.has_server_key)}
+        isGuest={Boolean(user?.is_guest)}
         onSave={(savedKey) => {
           setLocalOpenRouterKey(savedKey);
           setEditingKey(false);
@@ -197,9 +198,11 @@ export default function App() {
               </div>
             </div>
           </div>
-          <button className="btn btn-ghost btn-sm signout" onClick={handleLogout}>
-            Sign out
-          </button>
+          {!user?.is_guest && (
+            <button className="btn btn-ghost btn-sm signout" onClick={handleLogout}>
+              Sign out
+            </button>
+          )}
         </div>
       </aside>
 

@@ -38,6 +38,8 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
 # Persisted state lives under /app/data — mount a volume there.
 # DATA_DIR holds conversations; STATE_DIR holds matters and user accounts.
+RUN mkdir -p /app/data/conversations && chmod -R 777 /app/data
+
 ENV DATA_DIR=/app/data/conversations \
     STATE_DIR=/app/data \
     PYTHONUNBUFFERED=1 \

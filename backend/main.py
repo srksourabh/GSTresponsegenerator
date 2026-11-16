@@ -760,17 +760,33 @@ async def run_panel_endpoint(
 
     async def event_generator():
         key_token = openrouter.set_request_api_key(x_openrouter_key)
+        stream = run_panel_stream(
+            intake_data,
+            domain=request.domain,
+            tier_name=request.tier,
+            skip_verification=request.skip_verification,
+        )
+        pending_next = None
         try:
             if matter_id:
                 yield f"data: {json.dumps({'type': 'matter_created', 'matter_id': matter_id})}\n\n"
 
             final = None
-            async for event in run_panel_stream(
-                intake_data,
-                domain=request.domain,
-                tier_name=request.tier,
-                skip_verification=request.skip_verification,
-            ):
+            while True:
+                if pending_next is None:
+                    pending_next = asyncio.create_task(stream.__anext__())
+                done, _ = await asyncio.wait({pending_next}, timeout=8.0)
+                if pending_next not in done:
+                    # Keep Cloudflare / HF Spaces proxies from closing idle SSE streams.
+                    yield ": keepalive\n\n"
+                    continue
+                try:
+                    event = pending_next.result()
+                except StopAsyncIteration:
+                    pending_next = None
+                    break
+                pending_next = None
+
                 if event["type"] == "summary":
                     final = event
                 yield f"data: {json.dumps(_redact_event(event))}\n\n"
@@ -786,6 +802,9 @@ async def run_panel_endpoint(
             print(f"Panel error on matter {matter_id}: {e}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
+            if pending_next is not None and not pending_next.done():
+                pending_next.cancel()
+            await stream.aclose()
             openrouter.reset_request_api_key(key_token)
 
     return StreamingResponse(

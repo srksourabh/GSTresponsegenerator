@@ -38,6 +38,9 @@ export default function QuickResponder({ onAuthError, onOpenMatter }) {
 
   const [running, setRunning] = useState(false);
   const [stageStatus, setStageStatus] = useState({});
+  const [counselDoneCount, setCounselDoneCount] = useState(0);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [panelResult, setPanelResult] = useState(null);
   const [matterId, setMatterId] = useState(null);
   const [copiedReply, setCopiedReply] = useState(false);
@@ -58,6 +61,14 @@ export default function QuickResponder({ onAuthError, onOpenMatter }) {
       }
     })();
   }, [onAuthError]);
+
+  useEffect(() => {
+    if (!running) return undefined;
+    const id = setInterval(() => {
+      setElapsedSeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [running]);
 
   useEffect(() => {
     return () => {
@@ -191,6 +202,9 @@ export default function QuickResponder({ onAuthError, onOpenMatter }) {
     setStep('generate');
     setRunning(true);
     setStageStatus({});
+    setCounselDoneCount(0);
+    setProgressPercent(5);
+    setElapsedSeconds(0);
     setPanelResult(null);
     setMatterId(null);
 
@@ -199,6 +213,16 @@ export default function QuickResponder({ onAuthError, onOpenMatter }) {
       cross_exams: [],
       determination: null,
       verification: null,
+    };
+
+    const markRunningAsError = () => {
+      setStageStatus((s) => {
+        const next = { ...s };
+        for (const k of Object.keys(next)) {
+          if (next[k] === 'running') next[k] = 'error';
+        }
+        return next;
+      });
     };
 
     try {
@@ -213,35 +237,56 @@ export default function QuickResponder({ onAuthError, onOpenMatter }) {
             case 'matter_created':
               if (event.matter_id) setMatterId(event.matter_id);
               break;
+            case 'grounding_start':
+              setProgressPercent((p) => Math.max(p, 8));
+              break;
+            case 'grounding_complete':
+              setProgressPercent((p) => Math.max(p, 12));
+              break;
             case 'stage1_start':
               setStageStatus((s) => ({ ...s, stage1: 'running' }));
+              setProgressPercent((p) => Math.max(p, 15));
+              break;
+            case 'counsel_complete':
+              setCounselDoneCount((c) => {
+                const next = Math.min(4, c + 1);
+                setProgressPercent((p) => Math.max(p, 15 + next * 5));
+                return next;
+              });
               break;
             case 'stage1_complete':
               setStageStatus((s) => ({ ...s, stage1: 'done' }));
+              setProgressPercent((p) => Math.max(p, 38));
               collected.analyses = event.data || [];
               setPanelResult({ ...collected });
               break;
             case 'stage2_start':
               setStageStatus((s) => ({ ...s, stage2: 'running' }));
+              setProgressPercent((p) => Math.max(p, 42));
               break;
             case 'stage2_complete':
               setStageStatus((s) => ({ ...s, stage2: 'done' }));
+              setProgressPercent((p) => Math.max(p, 62));
               collected.cross_exams = event.data || [];
               setPanelResult({ ...collected });
               break;
             case 'stage3_start':
               setStageStatus((s) => ({ ...s, stage3: 'running' }));
+              setProgressPercent((p) => Math.max(p, 68));
               break;
             case 'stage3_complete':
               setStageStatus((s) => ({ ...s, stage3: 'done' }));
+              setProgressPercent((p) => Math.max(p, 88));
               collected.determination = event.data;
               setPanelResult({ ...collected });
               break;
             case 'verification_start':
               setStageStatus((s) => ({ ...s, verification: 'running' }));
+              setProgressPercent((p) => Math.max(p, 92));
               break;
             case 'verification_complete':
               setStageStatus((s) => ({ ...s, verification: 'done' }));
+              setProgressPercent(100);
               collected.verification = event.data;
               setPanelResult({ ...collected });
               break;
@@ -253,9 +298,11 @@ export default function QuickResponder({ onAuthError, onOpenMatter }) {
               break;
             case 'complete':
               if (event.matter_id) setMatterId(event.matter_id);
+              setProgressPercent(100);
               setPanelResult({ ...collected });
               break;
             case 'error':
+              markRunningAsError();
               setError(event.message || 'Panel generation failed.');
               break;
             default:
@@ -265,6 +312,7 @@ export default function QuickResponder({ onAuthError, onOpenMatter }) {
       );
       setPanelResult({ ...collected });
     } catch (err) {
+      markRunningAsError();
       if (!onAuthError?.(err)) {
         setError(err.message || 'Failed to generate GST notice response.');
       }
@@ -678,14 +726,27 @@ export default function QuickResponder({ onAuthError, onOpenMatter }) {
           <div className="card card-pad qr-progress-card">
             <div className="qr-progress-header">
               <div>
-                <h3>{running ? 'Drafting Your GST Notice Response…' : 'GST Notice Response Ready'}</h3>
+                <h3>
+                  {running
+                    ? 'Drafting Your GST Notice Response…'
+                    : determinationText
+                    ? 'GST Notice Response Ready'
+                    : 'Response Generation Incomplete'}
+                </h3>
                 <p className="muted">
                   {running
                     ? 'Four specialist counsel are analysing the notice and verifying statutory citations.'
-                    : 'Review the draft reply below, copy it, or export the formatted Word reply pack.'}
+                    : determinationText
+                    ? 'Review the draft reply below, copy it, or export the formatted Word reply pack.'
+                    : error || 'No draft reply was received from the panel. Check your OpenRouter API key/credits and retry.'}
                 </p>
               </div>
               <div className="qr-result-actions">
+                {!running && !determinationText && (
+                  <button type="button" className="btn btn-primary" onClick={handleGenerate}>
+                    Retry Generation
+                  </button>
+                )}
                 {!running && determinationText && (
                   <>
                     <button type="button" className="btn btn-ghost" onClick={copyDraftReply}>
@@ -725,17 +786,64 @@ export default function QuickResponder({ onAuthError, onOpenMatter }) {
               </div>
             </div>
 
+            <div className="qr-progressbar-wrap" aria-live="polite">
+              <div className="qr-progressbar-meta">
+                <span>
+                  {running
+                    ? stageStatus.stage1 === 'running'
+                      ? `Stage 1/4: Counsel Opening Analyses (${counselDoneCount}/4 complete)`
+                      : stageStatus.stage2 === 'running'
+                      ? 'Stage 2/4: Cross-Examination'
+                      : stageStatus.stage3 === 'running'
+                      ? 'Stage 3/4: Chairman Determination'
+                      : stageStatus.verification === 'running'
+                      ? 'Stage 4/4: Citation Verification'
+                      : 'Connecting to compliance panel…'
+                    : determinationText
+                    ? 'Completed (4/4 stages)'
+                    : 'Stopped before completion'}
+                </span>
+                <span className="qr-progressbar-stats">
+                  {progressPercent}% · {elapsedSeconds}s
+                </span>
+              </div>
+              <div
+                className="qr-progressbar-track"
+                role="progressbar"
+                aria-valuenow={progressPercent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className={`qr-progressbar-fill ${running ? 'active' : ''} ${
+                    !running && !determinationText ? 'error' : ''
+                  }`}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+
             <div className="qr-stages-row">
               {STAGES.map((st) => {
-                const status = stageStatus[st.key] || (running ? 'pending' : panelResult ? 'done' : 'pending');
+                const status = stageStatus[st.key] || 'pending';
+                const desc =
+                  st.key === 'stage1' && status === 'running' && counselDoneCount > 0
+                    ? `${counselDoneCount}/4 counsel analyses complete…`
+                    : st.desc;
                 return (
                   <div key={st.key} className={`qr-stage-pill ${status}`}>
                     <span className="qr-stage-indicator">
-                      {status === 'done' ? '✓' : status === 'running' ? '●' : '○'}
+                      {status === 'done'
+                        ? '✓'
+                        : status === 'running'
+                        ? '●'
+                        : status === 'error'
+                        ? '✕'
+                        : '○'}
                     </span>
                     <div>
                       <div className="qr-stage-name">{st.label}</div>
-                      <div className="qr-stage-desc">{st.desc}</div>
+                      <div className="qr-stage-desc">{desc}</div>
                     </div>
                   </div>
                 );

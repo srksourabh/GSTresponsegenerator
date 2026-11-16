@@ -343,25 +343,41 @@ async function consumeSSE(response, onEvent) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let sawTerminal = false;
+
+  const dispatchChunk = (raw) => {
+    for (const line of raw.split('\n')) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const event = JSON.parse(line.slice(6));
+        if (event.type === 'complete' || event.type === 'error') {
+          sawTerminal = true;
+        }
+        onEvent(event.type, event);
+      } catch (e) {
+        console.error('Failed to parse SSE event:', e);
+      }
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      buffer += decoder.decode();
+      if (buffer.trim()) dispatchChunk(buffer);
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
 
     let boundary;
     while ((boundary = buffer.indexOf('\n\n')) !== -1) {
       const raw = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
-      for (const line of raw.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const event = JSON.parse(line.slice(6));
-          onEvent(event.type, event);
-        } catch (e) {
-          console.error('Failed to parse SSE event:', e);
-        }
-      }
+      dispatchChunk(raw);
     }
+  }
+
+  if (!sawTerminal) {
+    throw new Error('The response stream ended unexpectedly before finishing. Please try again.');
   }
 }

@@ -85,6 +85,31 @@ export default function Login({ onSuccess, theme, onToggleTheme }) {
           </div>
         </div>
 
+        <p
+          className="muted"
+          style={{
+            fontSize: '0.85rem',
+            lineHeight: 1.5,
+            marginTop: -4,
+            marginBottom: 16,
+            paddingBottom: 14,
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
+          Indian GST notice scrutiny &amp; statutory reply workbench, prepared in
+          consultation with{' '}
+          <a
+            href="https://www.linkedin.com/in/caloganathan/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            CA Loganathan Anandan
+          </a>{' '}
+          (FCA, CISA, CDPSE, CFE, FIPA), Founder of Straits Partners and President
+          Director of PT JCSS Management Consulting, specialising in cross-border
+          advisory, compliance, and risk strategy.
+        </p>
+
         {mode === 'register' ? (
           <form onSubmit={submitRegister}>
             <div className="field">
